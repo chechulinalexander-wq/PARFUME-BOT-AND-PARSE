@@ -1,0 +1,39 @@
+# База данных с API ключами
+*.db
+fragrantica_news.db
+
+# Скачанные изображения
+images/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.local
+
