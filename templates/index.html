@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌸 Perfume Publisher - Telegram Bot Manager</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .main-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #6c757d;
+            margin: 0;
+        }
+        
+        .table-container {
+            margin-bottom: 30px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .table {
+            margin-bottom: 0;
+        }
+        
+        .table thead {
+            position: sticky;
+            top: 0;
+            background: #667eea;
+            color: white;
+            z-index: 10;
+        }
+        
+        .table tbody tr {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .table tbody tr:hover {
+            background: #f8f9fa;
+            transform: scale(1.01);
+        }
+        
+        .table tbody tr.selected {
+            background: #e7f3ff;
+            font-weight: bold;
+        }
+        
+        .btn-toolbar {
+            margin-bottom: 20px;
+        }
+        
+        .prompt-box {
+            height: 300px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .settings-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .selected-product-info {
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .publish-btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            transition: all 0.3s;
+        }
+        
+        .publish-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .publish-btn:disabled {
+            opacity: 0.6;
+            transform: none;
+        }
+        
+        .url-link {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+        }
+        
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+        
+        .spinner-container {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Container for notifications -->
+    <div class="toast-container"></div>
+    
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="main-container">
+            <div class="header">
+                <h1>🌸 Perfume Publisher</h1>
+                <p>Telegram Bot Manager - Управление публикациями парфюмерных товаров</p>
+            </div>
+            
+            <!-- Products Table -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-box-seam"></i> Товары Randewoo</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Toolbar -->
+                    <div class="btn-toolbar mb-3" role="toolbar">
+                        <button class="btn btn-success me-2" onclick="showAddModal()">
+                            <i class="bi bi-plus-circle"></i> Добавить
+                        </button>
+                        <button class="btn btn-warning me-2" onclick="showEditModal()" id="editBtn" disabled>
+                            <i class="bi bi-pencil"></i> Редактировать
+                        </button>
+                        <button class="btn btn-danger me-2" onclick="deleteProduct()" id="deleteBtn" disabled>
+                            <i class="bi bi-trash"></i> Удалить
+                        </button>
+                        <button class="btn btn-secondary" onclick="loadProducts()">
+                            <i class="bi bi-arrow-clockwise"></i> Обновить
+                        </button>
+                        <span class="ms-auto badge bg-info fs-6" id="productCount">0 товаров</span>
+                    </div>
+                    
+                    <!-- Table -->
+                    <div class="table-container">
+                        <table class="table table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    <th style="width: 60px;">ID</th>
+                                    <th style="width: 150px;">Бренд</th>
+                                    <th style="width: 250px;">Название</th>
+                                    <th>URL Randewoo</th>
+                                    <th>URL Fragrantica</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productsTable">
+                                <tr>
+                                    <td colspan="5" class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Загрузка...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bottom Panel -->
+            <div class="row">
+                <!-- Left: Prompt -->
+                <div class="col-md-7">
+                    <div class="card">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="bi bi-robot"></i> Промпт для GPT</h5>
+                        </div>
+                        <div class="card-body">
+                            <textarea class="form-control prompt-box" id="promptText" placeholder="Введите промпт для GPT...">Представь что ты парфюмерный эксперт и копирайтер. 
+Напиши короткий пост для Telegram (максимум 900 символов) о парфюме {brand} {name}.
+
+Стиль:
+- Разговорный, теплый, от первого лица
+- Короткие абзацы (1-2 строки)
+- Сенсорные детали (запахи, ассоциации)
+- 2-3 эмодзи максимум
+- Закончи вопросом или призывом
+
+Пиши ТОЛЬКО на русском языке.</textarea>
+                            <small class="text-muted">
+                                💡 Используйте {brand} и {name} для подстановки данных
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right: Settings & Publish -->
+                <div class="col-md-5">
+                    <!-- Selected Product Info -->
+                    <div class="selected-product-info" id="selectedInfo" style="display: none;">
+                        <h6 class="text-primary mb-2"><i class="bi bi-check-circle"></i> Выбрано:</h6>
+                        <div id="selectedProductText">Выберите товар в таблице</div>
+                    </div>
+                    
+                    <!-- Settings -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-secondary text-white">
+                            <h5 class="mb-0"><i class="bi bi-gear"></i> Настройки</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">OpenAI API Key:</label>
+                                <input type="password" class="form-control" id="openaiKey" placeholder="sk-...">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Telegram Bot Token:</label>
+                                <input type="password" class="form-control" id="telegramToken" placeholder="1234567890:ABC...">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Telegram Channel ID:</label>
+                                <input type="text" class="form-control" id="telegramChannel" placeholder="@channelname или -100...">
+                            </div>
+                            <button class="btn btn-primary w-100" onclick="saveSettings()">
+                                <i class="bi bi-save"></i> Сохранить настройки
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Publish Button -->
+                    <button class="btn btn-primary publish-btn" onclick="publishProduct()" id="publishBtn" disabled>
+                        <i class="bi bi-send-fill"></i> ОПУБЛИКОВАТЬ В TELEGRAM
+                    </button>
+                    
+                    <!-- Loading Spinner -->
+                    <div class="spinner-container" id="publishSpinner">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2">Публикуем пост...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add/Edit Product Modal -->
+    <div class="modal fade" id="productModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Добавить товар</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalProductId">
+                    <div class="mb-3">
+                        <label class="form-label">Бренд *</label>
+                        <input type="text" class="form-control" id="modalBrand" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Название *</label>
+                        <input type="text" class="form-control" id="modalName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL Randewoo</label>
+                        <input type="url" class="form-control" id="modalProductUrl">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL Fragrantica</label>
+                        <input type="url" class="form-control" id="modalFragranticaUrl">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="saveProduct()">
+                        <i class="bi bi-save"></i> Сохранить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        let selectedProductId = null;
+        let productsData = [];
+        
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+        
+        window.onload = function() {
+            loadProducts();
+            loadSettings();
+        };
+        
+        // ============================================================================
+        // PRODUCTS MANAGEMENT
+        // ============================================================================
+        
+        function loadProducts() {
+            fetch('/api/products')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        productsData = data.products;
+                        renderProducts(data.products);
+                        document.getElementById('productCount').textContent = data.products.length + ' товаров';
+                    } else {
+                        showToast('Ошибка загрузки товаров: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showToast('Ошибка загрузки товаров: ' + error, 'danger');
+                });
+        }
+        
+        function renderProducts(products) {
+            const tbody = document.getElementById('productsTable');
+            
+            if (products.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет товаров</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = products.map(p => `
+                <tr onclick="selectProduct(${p.id})" id="row-${p.id}">
+                    <td>${p.id}</td>
+                    <td>${escapeHtml(p.brand)}</td>
+                    <td>${escapeHtml(p.name)}</td>
+                    <td>
+                        ${p.product_url ? `<a href="${p.product_url}" target="_blank" class="url-link" onclick="event.stopPropagation()">${p.product_url}</a>` : '<span class="text-muted">—</span>'}
+                    </td>
+                    <td>
+                        ${p.fragrantica_url ? `<a href="${p.fragrantica_url}" target="_blank" class="url-link" onclick="event.stopPropagation()">${p.fragrantica_url}</a>` : '<span class="text-muted">—</span>'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        function selectProduct(id) {
+            selectedProductId = id;
+            
+            // Highlight selected row
+            document.querySelectorAll('#productsTable tr').forEach(tr => tr.classList.remove('selected'));
+            document.getElementById('row-' + id).classList.add('selected');
+            
+            // Enable buttons
+            document.getElementById('editBtn').disabled = false;
+            document.getElementById('deleteBtn').disabled = false;
+            document.getElementById('publishBtn').disabled = false;
+            
+            // Show selected product info
+            const product = productsData.find(p => p.id === id);
+            document.getElementById('selectedInfo').style.display = 'block';
+            document.getElementById('selectedProductText').innerHTML = `
+                <strong>${escapeHtml(product.brand)} - ${escapeHtml(product.name)}</strong><br>
+                <small class="text-muted">ID: ${product.id}</small>
+            `;
+        }
+        
+        function showAddModal() {
+            document.getElementById('modalTitle').textContent = 'Добавить товар';
+            document.getElementById('modalProductId').value = '';
+            document.getElementById('modalBrand').value = '';
+            document.getElementById('modalName').value = '';
+            document.getElementById('modalProductUrl').value = '';
+            document.getElementById('modalFragranticaUrl').value = '';
+            
+            new bootstrap.Modal(document.getElementById('productModal')).show();
+        }
+        
+        function showEditModal() {
+            if (!selectedProductId) return;
+            
+            const product = productsData.find(p => p.id === selectedProductId);
+            
+            document.getElementById('modalTitle').textContent = 'Редактировать товар';
+            document.getElementById('modalProductId').value = product.id;
+            document.getElementById('modalBrand').value = product.brand;
+            document.getElementById('modalName').value = product.name;
+            document.getElementById('modalProductUrl').value = product.product_url || '';
+            document.getElementById('modalFragranticaUrl').value = product.fragrantica_url || '';
+            
+            new bootstrap.Modal(document.getElementById('productModal')).show();
+        }
+        
+        function saveProduct() {
+            const id = document.getElementById('modalProductId').value;
+            const brand = document.getElementById('modalBrand').value.trim();
+            const name = document.getElementById('modalName').value.trim();
+            const productUrl = document.getElementById('modalProductUrl').value.trim();
+            const fragranticaUrl = document.getElementById('modalFragranticaUrl').value.trim();
+            
+            if (!brand || !name) {
+                showToast('Заполните бренд и название', 'warning');
+                return;
+            }
+            
+            const data = { brand, name, product_url: productUrl, fragrantica_url: fragranticaUrl };
+            
+            const url = id ? `/api/products/${id}` : '/api/products';
+            const method = id ? 'PUT' : 'POST';
+            
+            fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('productModal')).hide();
+                    loadProducts();
+                } else {
+                    showToast('Ошибка: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showToast('Ошибка: ' + error, 'danger');
+            });
+        }
+        
+        function deleteProduct() {
+            if (!selectedProductId) return;
+            
+            if (!confirm('Удалить выбранный товар?')) return;
+            
+            fetch(`/api/products/${selectedProductId}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Товар удален', 'success');
+                        selectedProductId = null;
+                        document.getElementById('selectedInfo').style.display = 'none';
+                        document.getElementById('editBtn').disabled = true;
+                        document.getElementById('deleteBtn').disabled = true;
+                        document.getElementById('publishBtn').disabled = true;
+                        loadProducts();
+                    } else {
+                        showToast('Ошибка: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showToast('Ошибка: ' + error, 'danger');
+                });
+        }
+        
+        // ============================================================================
+        // SETTINGS
+        // ============================================================================
+        
+        function loadSettings() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('openaiKey').value = data.settings.openai_key;
+                        document.getElementById('telegramToken').value = data.settings.telegram_token;
+                        document.getElementById('telegramChannel').value = data.settings.telegram_channel;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading settings:', error);
+                });
+        }
+        
+        function saveSettings() {
+            const settings = {
+                openai_key: document.getElementById('openaiKey').value.trim(),
+                telegram_token: document.getElementById('telegramToken').value.trim(),
+                telegram_channel: document.getElementById('telegramChannel').value.trim()
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Настройки сохранены!', 'success');
+                } else {
+                    showToast('Ошибка: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showToast('Ошибка: ' + error, 'danger');
+            });
+        }
+        
+        // ============================================================================
+        // PUBLISH
+        // ============================================================================
+        
+        function publishProduct() {
+            if (!selectedProductId) {
+                showToast('Выберите товар для публикации', 'warning');
+                return;
+            }
+            
+            const prompt = document.getElementById('promptText').value.trim();
+            if (!prompt) {
+                showToast('Введите промпт для GPT', 'warning');
+                return;
+            }
+            
+            // Show spinner
+            document.getElementById('publishSpinner').style.display = 'block';
+            document.getElementById('publishBtn').disabled = true;
+            
+            fetch('/api/publish', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: selectedProductId,
+                    prompt: prompt
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('publishSpinner').style.display = 'none';
+                document.getElementById('publishBtn').disabled = false;
+                
+                if (data.success) {
+                    showToast(`✅ Пост опубликован!\n\nMessage ID: ${data.message_id}\nДлина: ${data.text_length} символов`, 'success');
+                } else {
+                    showToast('Ошибка: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                document.getElementById('publishSpinner').style.display = 'none';
+                document.getElementById('publishBtn').disabled = false;
+                showToast('Ошибка: ' + error, 'danger');
+            });
+        }
+        
+        // ============================================================================
+        // HELPERS
+        // ============================================================================
+        
+        function showToast(message, type = 'info') {
+            const toastContainer = document.querySelector('.toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${escapeHtml(message)}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            toastContainer.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            
+            setTimeout(() => toast.remove(), 5000);
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
+

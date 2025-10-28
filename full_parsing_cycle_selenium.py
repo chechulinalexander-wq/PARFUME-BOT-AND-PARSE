@@ -8,7 +8,6 @@ import time
 import unicodedata
 import re
 from rapidfuzz import fuzz
-from datetime import datetime
 import cloudscraper
 import warnings
 
@@ -44,18 +43,13 @@ PROXY_URL = f"http://{SMARTPROXY_USER}:{SMARTPROXY_PASS}@{SMARTPROXY_HOST}:{SMAR
 # ============================================================================
 
 def clear_database():
-    """Очищает таблицы randewoo_products и perfume_news"""
+    """Очищает таблицу randewoo_products"""
     print("\n" + "="*80, flush=True)
     print("ШАГ 1: ОЧИСТКА БД", flush=True)
     print("="*80 + "\n", flush=True)
     
     conn = sqlite3.connect('fragrantica_news.db')
     cursor = conn.cursor()
-    
-    cursor.execute('SELECT COUNT(*) FROM perfume_news')
-    news_count = cursor.fetchone()[0]
-    cursor.execute('DELETE FROM perfume_news')
-    print(f"✓ Удалено {news_count} записей из perfume_news")
     
     cursor.execute('SELECT COUNT(*) FROM randewoo_products')
     products_count = cursor.fetchone()[0]
@@ -65,7 +59,7 @@ def clear_database():
     conn.commit()
     conn.close()
     
-    print("\n✓ Таблицы очищены")
+    print("\n✓ Таблица очищена")
 
 # ============================================================================
 # ШАГ 2: ПАРСИНГ RANDEWOO С SELENIUM
@@ -445,182 +439,6 @@ def match_fragrantica_urls():
     print(f"{'='*80}")
 
 # ============================================================================
-# ШАГ 4: ПАРСИНГ НОВОСТЕЙ
-# ============================================================================
-
-def parse_perfume_news_article(scraper, product_id, fragrantica_url, max_retries=3):
-    """
-    Парсит новости со страницы аромата с retry логикой
-    
-    Args:
-        scraper: cloudscraper instance
-        product_id: ID товара в БД
-        fragrantica_url: URL страницы аромата
-        max_retries: Количество попыток при ошибке
-    
-    Returns:
-        list: Список новостей или пустой список при ошибке
-    """
-    
-    for attempt in range(max_retries):
-        try:
-            # Пауза перед запросом (увеличена с 2 до 5 сек)
-            time.sleep(5)
-            
-            response = scraper.get(fragrantica_url, timeout=30)
-            response.encoding = 'utf-8'
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            news_list = []
-            news_blocks = soup.find_all('div', class_='newslist')
-            
-            for block in news_blocks:
-                date_div = block.find('div', class_='right-bottom-corner-abs')
-                if date_div:
-                    date_str = date_div.get_text(strip=True)
-                    try:
-                        if len(date_str.split('/')[2].split(' ')[0]) == 2:
-                            news_date = datetime.strptime(date_str, '%m/%d/%y %H:%M')
-                        else:
-                            news_date = datetime.strptime(date_str, '%m/%d/%Y %H:%M')
-                        
-                        # Фильтр по году (можно изменить на >= 2024 для большего охвата)
-                        if news_date.year == 2025:
-                            title_tag = block.find('h4')
-                            link_tag = block.find('a', href=True)
-                            author_tag = block.find('p')
-                            
-                            if title_tag and link_tag:
-                                news_title = title_tag.get_text(strip=True)
-                                news_url = urljoin('https://www.fragrantica.ru', link_tag['href'])
-                                author = author_tag.get_text(strip=True).replace('от', '').strip() if author_tag else None
-                                
-                                news_list.append({
-                                    'product_id': product_id,
-                                    'news_title': news_title,
-                                    'news_url': news_url,
-                                    'news_date': news_date,
-                                    'author': author
-                                })
-                    except ValueError as e:
-                        # Ошибка парсинга даты - пропускаем эту новость
-                        continue
-            
-            return news_list
-            
-        except (ConnectionError, ConnectionResetError) as e:
-            # Ошибка подключения - retry с экспоненциальной задержкой
-            if attempt < max_retries - 1:
-                wait_time = 10 * (2 ** attempt)  # 10, 20, 40 секунд
-                print(f"     ⚠ Ошибка подключения (попытка {attempt + 1}/{max_retries}), жду {wait_time} сек...")
-                time.sleep(wait_time)
-            else:
-                print(f"     ✗ Не удалось загрузить после {max_retries} попыток")
-                return []
-                
-        except Exception as e:
-            # Неожиданная ошибка
-            print(f"     ✗ Ошибка парсинга: {type(e).__name__}: {str(e)[:100]}")
-            return []
-    
-    return []
-
-def parse_all_news():
-    print("\n" + "="*80)
-    print("ШАГ 4: ПАРСИНГ НОВОСТЕЙ")
-    print("="*80 + "\n")
-    
-    conn = sqlite3.connect('fragrantica_news.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT id, brand, name, fragrantica_url 
-        FROM randewoo_products 
-        WHERE fragrantica_url IS NOT NULL
-    ''')
-    products = cursor.fetchall()
-    
-    if not products:
-        print("✗ Нет товаров с Fragrantica URL")
-        conn.close()
-        return
-    
-    print(f"Товаров для парсинга новостей: {len(products)}\n")
-    
-    # Настройки батчей
-    BATCH_SIZE = 50  # Обрабатываем по 50 товаров
-    BATCH_PAUSE = 60  # Пауза 60 секунд между батчами
-    
-    total_news = 0
-    products_with_news = 0
-    total_batches = (len(products) + BATCH_SIZE - 1) // BATCH_SIZE
-    
-    for batch_num in range(0, len(products), BATCH_SIZE):
-        batch_products = products[batch_num:batch_num + BATCH_SIZE]
-        current_batch = batch_num // BATCH_SIZE + 1
-        
-        print(f"\n{'='*80}")
-        print(f"БАТЧ {current_batch}/{total_batches} (товары {batch_num + 1}-{min(batch_num + BATCH_SIZE, len(products))})")
-        print(f"{'='*80}\n")
-        
-        # Создаем новый scraper для каждого батча
-        scraper = cloudscraper.create_scraper(
-            browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
-        )
-        # Настраиваем прокси Smartproxy
-        scraper.proxies = {
-            'http': PROXY_URL,
-            'https': PROXY_URL
-        }
-        
-        for idx_in_batch, (product_id, brand, name, fragrantica_url) in enumerate(batch_products, 1):
-            global_idx = batch_num + idx_in_batch
-            
-            print(f"[{global_idx}/{len(products)}] {brand} - {name}", flush=True)
-            print(f"  🔗 URL: {fragrantica_url}", flush=True)
-            print(f"  📰 Парсю новости...", end=" ", flush=True)
-            
-            try:
-                news_list = parse_perfume_news_article(scraper, product_id, fragrantica_url)
-                
-                if news_list:
-                    print(f"✓ Найдено: {len(news_list)}", flush=True)
-                    
-                    for news in news_list:
-                        try:
-                            cursor.execute('''
-                                INSERT OR IGNORE INTO perfume_news 
-                                (product_id, news_title, news_url, news_date, author)
-                                VALUES (?, ?, ?, ?, ?)
-                            ''', (news['product_id'], news['news_title'], news['news_url'], 
-                                  news['news_date'], news['author']))
-                            print(f"     • {news['news_title'][:60]}... ({news['news_date'].strftime('%Y-%m-%d')})", flush=True)
-                        except Exception as e:
-                            print(f"     ⚠ Ошибка сохранения: {e}", flush=True)
-                    
-                    conn.commit()
-                    total_news += len(news_list)
-                    products_with_news += 1
-                else:
-                    print(f"⊘ Новостей нет", flush=True)
-                
-            except Exception as e:
-                print(f"✗ Ошибка: {e}", flush=True)
-        
-        # Пауза между батчами (кроме последнего)
-        if current_batch < total_batches:
-            print(f"\n⏸  ПАУЗА {BATCH_PAUSE} СЕК ПЕРЕД СЛЕДУЮЩИМ БАТЧЕМ...\n", flush=True)
-            time.sleep(BATCH_PAUSE)
-    
-    conn.close()
-    
-    print(f"\n{'='*80}")
-    print(f"РЕЗУЛЬТАТЫ:")
-    print(f"  Всего новостей: {total_news}")
-    print(f"  Ароматов с новостями: {products_with_news}/{len(products)}")
-    print(f"{'='*80}")
-
-# ============================================================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================================================
 
@@ -650,16 +468,11 @@ def main():
         cursor.execute('SELECT COUNT(*) FROM randewoo_products WHERE fragrantica_url IS NOT NULL')
         products_with_fragrantica = cursor.fetchone()[0]
         
-        # Проверяем количество новостей
-        cursor.execute('SELECT COUNT(*) FROM perfume_news')
-        total_news = cursor.fetchone()[0]
-        
         conn.close()
         
         print(f"📊 Текущее состояние БД:")
         print(f"  • Товаров в БД: {total_products}")
-        print(f"  • С Fragrantica URL: {products_with_fragrantica}")
-        print(f"  • Новостей в БД: {total_news}\n")
+        print(f"  • С Fragrantica URL: {products_with_fragrantica}\n")
         
         # ============================================================
         # ПРИНИМАЕМ РЕШЕНИЕ О ПЛАНЕ ДЕЙСТВИЙ
@@ -668,8 +481,7 @@ def main():
         if total_products == 0:
             print("📋 ПЛАН: ПОЛНЫЙ ЦИКЛ (БД пустая)")
             print("  1. ✓ Парсинг Randewoo")
-            print("  2. ✓ Поиск на Fragrantica")
-            print("  3. ✓ Парсинг новостей\n")
+            print("  2. ✓ Поиск на Fragrantica\n")
             
             products_count = parse_randewoo_with_selenium(MAX_PRODUCTS)
             
@@ -678,33 +490,25 @@ def main():
                 return
             
             match_fragrantica_urls()
-            parse_all_news()
             
         elif products_with_fragrantica == 0:
-            print("📋 ПЛАН: ПОИСК FRAGRANTICA + НОВОСТИ")
+            print("📋 ПЛАН: ТОЛЬКО ПОИСК FRAGRANTICA")
             print("  1. ⊘ Парсинг Randewoo (пропущен - товары есть)")
-            print("  2. ✓ Поиск на Fragrantica")
-            print("  3. ✓ Парсинг новостей\n")
+            print("  2. ✓ Поиск на Fragrantica\n")
             
             match_fragrantica_urls()
-            parse_all_news()
             
         elif products_with_fragrantica < total_products:
-            print("📋 ПЛАН: ДОГРУЗКА FRAGRANTICA + НОВОСТИ")
+            print("📋 ПЛАН: ДОГРУЗКА FRAGRANTICA")
             print("  1. ⊘ Парсинг Randewoo (пропущен)")
-            print("  2. ✓ Поиск на Fragrantica (только для не найденных)")
-            print("  3. ✓ Парсинг новостей\n")
+            print("  2. ✓ Поиск на Fragrantica (только для не найденных)\n")
             
             match_fragrantica_urls()
-            parse_all_news()
             
         else:
-            print("📋 ПЛАН: ТОЛЬКО НОВОСТИ")
+            print("📋 ВСЕ ГОТОВО!")
             print("  1. ⊘ Парсинг Randewoo (пропущен)")
-            print("  2. ⊘ Поиск на Fragrantica (пропущен - все найдены)")
-            print("  3. ✓ Парсинг новостей\n")
-            
-            parse_all_news()
+            print("  2. ⊘ Поиск на Fragrantica (пропущен - все найдены)\n")
         
         elapsed = time.time() - start_time
         
