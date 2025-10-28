@@ -8,7 +8,7 @@ from datetime import datetime
 import threading
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here-change-in-production'
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 DB_PATH = 'fragrantica_news.db'
 
@@ -392,13 +392,23 @@ def publish():
 # ============================================================================
 
 if __name__ == '__main__':
+    import sys
+    import io
+    
+    # Фикс кодировки для Windows консоли
+    if sys.platform == 'win32':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    
     print("="*80)
-    print("🌸 PERFUME PUBLISHER WEB APP")
+    print("PERFUME PUBLISHER WEB APP")
     print("="*80)
-    print("\n✨ Starting server...")
-    print("📍 Open in browser: http://localhost:5000")
-    print("\n⚠️  Press CTRL+C to stop\n")
+    print("\nStarting server...")
+    print("Open in browser: http://localhost:5000")
+    print("\nPress CTRL+C to stop\n")
     print("="*80)
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Для продакшена отключить debug
+    debug_mode = os.environ.get('DEBUG', 'False') == 'True'
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
 
