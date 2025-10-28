@@ -236,36 +236,19 @@ def save_settings():
 
 @app.route('/api/publish', methods=['POST'])
 def publish():
-    """Опубликовать товар в Telegram"""
+    """Опубликовать товары в Telegram"""
     try:
         data = request.json
         
-        product_id = data.get('product_id')
+        product_ids = data.get('product_ids', [])
         prompt_template = data.get('prompt', '')
+        delay_seconds = data.get('delay', 5)  # Пауза между постами
         
-        if not product_id:
-            return jsonify({'success': False, 'error': 'Product ID is required'}), 400
+        if not product_ids:
+            return jsonify({'success': False, 'error': 'No products selected'}), 400
         
-        # Получаем товар
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT brand, name, product_url, fragrantica_url
-            FROM randewoo_products
-            WHERE id = ?
-        ''', (product_id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            return jsonify({'success': False, 'error': 'Product not found'}), 404
-        
-        brand = row['brand']
-        name = row['name']
-        product_url = row['product_url']
-        fragrantica_url = row['fragrantica_url']
+        if not isinstance(product_ids, list):
+            product_ids = [product_ids]
         
         # Получаем настройки
         openai_key = get_config('openai_api_key')
@@ -281,72 +264,125 @@ def publish():
         if not tg_channel:
             return jsonify({'success': False, 'error': 'Telegram Channel ID not configured'}), 400
         
-        # Формируем промпт
-        prompt = prompt_template.replace('{brand}', brand).replace('{name}', name)
+        # Получаем товары
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        # Генерируем текст через GPT
-        try:
-            client = OpenAI(api_key=openai_key)
-            
-            text_to_rewrite = f"Бренд: {brand}\nНазвание: {name}"
-            if product_url:
-                text_to_rewrite += f"\nURL: {product_url}"
-            if fragrantica_url:
-                text_to_rewrite += f"\nFragrantica: {fragrantica_url}"
-            
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": text_to_rewrite}
-                ],
-                temperature=0.7
-            )
-            
-            rewritten_text = response.choices[0].message.content
-            
-        except Exception as e:
-            return jsonify({'success': False, 'error': f'GPT Error: {str(e)}'}), 500
+        placeholders = ','.join('?' * len(product_ids))
+        cursor.execute(f'''
+            SELECT id, brand, name, product_url, fragrantica_url
+            FROM randewoo_products
+            WHERE id IN ({placeholders})
+        ''', product_ids)
         
-        # Добавляем ссылки
-        footer = ""
-        if product_url:
-            footer += f"\n\n🔗 Randewoo: {product_url}"
-        if fragrantica_url:
-            footer += f"\n🌸 Fragrantica: {fragrantica_url}"
+        products = cursor.fetchall()
+        conn.close()
         
-        full_text = rewritten_text + footer
+        if not products:
+            return jsonify({'success': False, 'error': 'No products found'}), 404
         
-        # Проверяем длину
-        if len(full_text) > 4096:
-            full_text = full_text[:4093] + "..."
+        # Результаты публикации
+        results = []
+        published_count = 0
+        failed_count = 0
         
-        # Публикуем в Telegram
-        try:
-            url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
+        # Публикуем каждый товар
+        for idx, product in enumerate(products):
+            product_id = product['id']
+            brand = product['brand']
+            name = product['name']
+            product_url = product['product_url']
+            fragrantica_url = product['fragrantica_url']
             
-            response = requests.post(url, json={
-                "chat_id": tg_channel,
-                "text": full_text,
-                "disable_web_page_preview": False
-            }, timeout=30)
-            
-            result = response.json()
-            
-            if result.get('ok'):
-                message_id = result['result']['message_id']
-                return jsonify({
-                    'success': True,
-                    'message': 'Published successfully!',
-                    'message_id': message_id,
-                    'text_length': len(full_text)
-                })
-            else:
-                error_desc = result.get('description', 'Unknown error')
-                return jsonify({'success': False, 'error': f'Telegram Error: {error_desc}'}), 500
+            try:
+                # Формируем промпт
+                prompt = prompt_template.replace('{brand}', brand).replace('{name}', name)
                 
-        except Exception as e:
-            return jsonify({'success': False, 'error': f'Telegram Error: {str(e)}'}), 500
+                # Генерируем текст через GPT
+                client = OpenAI(api_key=openai_key)
+                
+                text_to_rewrite = f"Бренд: {brand}\nНазвание: {name}"
+                if product_url:
+                    text_to_rewrite += f"\nURL: {product_url}"
+                if fragrantica_url:
+                    text_to_rewrite += f"\nFragrantica: {fragrantica_url}"
+                
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": text_to_rewrite}
+                    ],
+                    temperature=0.7
+                )
+                
+                rewritten_text = response.choices[0].message.content
+                
+                # Добавляем ссылки
+                footer = ""
+                if product_url:
+                    footer += f"\n\n🔗 Randewoo: {product_url}"
+                if fragrantica_url:
+                    footer += f"\n🌸 Fragrantica: {fragrantica_url}"
+                
+                full_text = rewritten_text + footer
+                
+                # Проверяем длину
+                if len(full_text) > 4096:
+                    full_text = full_text[:4093] + "..."
+                
+                # Публикуем в Telegram
+                url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
+                
+                response = requests.post(url, json={
+                    "chat_id": tg_channel,
+                    "text": full_text,
+                    "disable_web_page_preview": False
+                }, timeout=30)
+                
+                result = response.json()
+                
+                if result.get('ok'):
+                    message_id = result['result']['message_id']
+                    published_count += 1
+                    results.append({
+                        'product_id': product_id,
+                        'product_name': f"{brand} - {name}",
+                        'success': True,
+                        'message_id': message_id
+                    })
+                else:
+                    error_desc = result.get('description', 'Unknown error')
+                    failed_count += 1
+                    results.append({
+                        'product_id': product_id,
+                        'product_name': f"{brand} - {name}",
+                        'success': False,
+                        'error': error_desc
+                    })
+                
+                # Пауза между постами (кроме последнего)
+                if idx < len(products) - 1:
+                    import time
+                    time.sleep(delay_seconds)
+                    
+            except Exception as e:
+                failed_count += 1
+                results.append({
+                    'product_id': product_id,
+                    'product_name': f"{brand} - {name}",
+                    'success': False,
+                    'error': str(e)
+                })
+        
+        # Возвращаем результаты
+        return jsonify({
+            'success': True,
+            'total': len(products),
+            'published': published_count,
+            'failed': failed_count,
+            'results': results
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -173,10 +173,17 @@
                         <button class="btn btn-danger me-2" onclick="deleteProduct()" id="deleteBtn" disabled>
                             <i class="bi bi-trash"></i> Удалить
                         </button>
-                        <button class="btn btn-secondary" onclick="loadProducts()">
+                        <button class="btn btn-secondary me-2" onclick="loadProducts()">
                             <i class="bi bi-arrow-clockwise"></i> Обновить
                         </button>
+                        <button class="btn btn-outline-primary me-2" onclick="selectAll()">
+                            <i class="bi bi-check-square"></i> Выбрать все
+                        </button>
+                        <button class="btn btn-outline-secondary me-2" onclick="deselectAll()">
+                            <i class="bi bi-square"></i> Снять все
+                        </button>
                         <span class="ms-auto badge bg-info fs-6" id="productCount">0 товаров</span>
+                        <span class="ms-2 badge bg-success fs-6" id="selectedCount">0 выбрано</span>
                     </div>
                     
                     <!-- Table -->
@@ -184,6 +191,9 @@
                         <table class="table table-hover table-striped">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" id="selectAllCheckbox" onclick="toggleSelectAll()">
+                                    </th>
                                     <th style="width: 60px;">ID</th>
                                     <th style="width: 150px;">Бренд</th>
                                     <th style="width: 250px;">Название</th>
@@ -322,6 +332,7 @@
     <script>
         let selectedProductId = null;
         let productsData = [];
+        let selectedProductIds = new Set();  // Множество выбранных ID для массовой публикации
         
         // ============================================================================
         // INITIALIZATION
@@ -357,12 +368,18 @@
             const tbody = document.getElementById('productsTable');
             
             if (products.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет товаров</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Нет товаров</td></tr>';
                 return;
             }
             
             tbody.innerHTML = products.map(p => `
                 <tr onclick="selectProduct(${p.id})" id="row-${p.id}">
+                    <td onclick="event.stopPropagation()">
+                        <input type="checkbox" class="form-check-input product-checkbox" 
+                               data-product-id="${p.id}" 
+                               onchange="updateSelectedProducts(${p.id}, this.checked)"
+                               ${selectedProductIds.has(p.id) ? 'checked' : ''}>
+                    </td>
                     <td>${p.id}</td>
                     <td>${escapeHtml(p.brand)}</td>
                     <td>${escapeHtml(p.name)}</td>
@@ -374,6 +391,8 @@
                     </td>
                 </tr>
             `).join('');
+            
+            updateSelectedCount();
         }
         
         function selectProduct(id) {
@@ -386,7 +405,6 @@
             // Enable buttons
             document.getElementById('editBtn').disabled = false;
             document.getElementById('deleteBtn').disabled = false;
-            document.getElementById('publishBtn').disabled = false;
             
             // Show selected product info
             const product = productsData.find(p => p.id === id);
@@ -395,6 +413,61 @@
                 <strong>${escapeHtml(product.brand)} - ${escapeHtml(product.name)}</strong><br>
                 <small class="text-muted">ID: ${product.id}</small>
             `;
+            
+            updatePublishButton();
+        }
+        
+        function updateSelectedProducts(id, checked) {
+            if (checked) {
+                selectedProductIds.add(id);
+            } else {
+                selectedProductIds.delete(id);
+            }
+            updateSelectedCount();
+            updatePublishButton();
+        }
+        
+        function updateSelectedCount() {
+            const count = selectedProductIds.size;
+            document.getElementById('selectedCount').textContent = count + ' выбрано';
+        }
+        
+        function updatePublishButton() {
+            const btn = document.getElementById('publishBtn');
+            const count = selectedProductIds.size;
+            
+            if (count > 0) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-send-fill"></i> ОПУБЛИКОВАТЬ ${count} ТОВАР${count > 1 ? 'ОВ' : ''} В TELEGRAM`;
+            } else {
+                btn.disabled = true;
+                btn.innerHTML = `<i class="bi bi-send-fill"></i> ОПУБЛИКОВАТЬ В TELEGRAM`;
+            }
+        }
+        
+        function selectAll() {
+            productsData.forEach(p => selectedProductIds.add(p.id));
+            document.querySelectorAll('.product-checkbox').forEach(cb => cb.checked = true);
+            document.getElementById('selectAllCheckbox').checked = true;
+            updateSelectedCount();
+            updatePublishButton();
+        }
+        
+        function deselectAll() {
+            selectedProductIds.clear();
+            document.querySelectorAll('.product-checkbox').forEach(cb => cb.checked = false);
+            document.getElementById('selectAllCheckbox').checked = false;
+            updateSelectedCount();
+            updatePublishButton();
+        }
+        
+        function toggleSelectAll() {
+            const checkbox = document.getElementById('selectAllCheckbox');
+            if (checkbox.checked) {
+                selectAll();
+            } else {
+                deselectAll();
+            }
         }
         
         function showAddModal() {
@@ -534,8 +607,8 @@
         // ============================================================================
         
         function publishProduct() {
-            if (!selectedProductId) {
-                showToast('Выберите товар для публикации', 'warning');
+            if (selectedProductIds.size === 0) {
+                showToast('Выберите хотя бы один товар для публикации', 'warning');
                 return;
             }
             
@@ -545,31 +618,83 @@
                 return;
             }
             
-            // Show spinner
-            document.getElementById('publishSpinner').style.display = 'block';
+            // Confirm bulk publishing
+            const count = selectedProductIds.size;
+            if (count > 1 && !confirm(`Опубликовать ${count} товаров в Telegram?\n\nМежду постами будет пауза 5 секунд.`)) {
+                return;
+            }
+            
+            // Show spinner with progress
+            const spinnerDiv = document.getElementById('publishSpinner');
+            spinnerDiv.style.display = 'block';
+            spinnerDiv.innerHTML = `
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2">Публикуем ${count} товар${count > 1 ? 'ов' : ''}...</p>
+                <div class="progress mt-2" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         id="publishProgress" role="progressbar" 
+                         style="width: 0%">0/${count}</div>
+                </div>
+                <div id="publishDetails" class="mt-3 text-start small"></div>
+            `;
             document.getElementById('publishBtn').disabled = true;
             
             fetch('/api/publish', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    product_id: selectedProductId,
-                    prompt: prompt
+                    product_ids: Array.from(selectedProductIds),
+                    prompt: prompt,
+                    delay: 5
                 })
             })
             .then(response => response.json())
             .then(data => {
-                document.getElementById('publishSpinner').style.display = 'none';
+                spinnerDiv.style.display = 'none';
                 document.getElementById('publishBtn').disabled = false;
                 
                 if (data.success) {
-                    showToast(`✅ Пост опубликован!\n\nMessage ID: ${data.message_id}\nДлина: ${data.text_length} символов`, 'success');
+                    // Show detailed results
+                    let successList = '';
+                    let failedList = '';
+                    
+                    data.results.forEach(r => {
+                        if (r.success) {
+                            successList += `• ${r.product_name} (ID: ${r.message_id})\n`;
+                        } else {
+                            failedList += `• ${r.product_name}: ${r.error}\n`;
+                        }
+                    });
+                    
+                    let message = `📊 РЕЗУЛЬТАТЫ ПУБЛИКАЦИИ:\n\n`;
+                    message += `✅ Опубликовано: ${data.published}/${data.total}\n`;
+                    if (data.failed > 0) {
+                        message += `❌ Ошибок: ${data.failed}\n`;
+                    }
+                    
+                    if (successList) {
+                        message += `\n✅ Успешно:\n${successList}`;
+                    }
+                    
+                    if (failedList) {
+                        message += `\n❌ Ошибки:\n${failedList}`;
+                    }
+                    
+                    showToast(message, data.failed > 0 ? 'warning' : 'success');
+                    
+                    // Снимаем галочки с опубликованных товаров
+                    data.results.forEach(r => {
+                        if (r.success) {
+                            selectedProductIds.delete(r.product_id);
+                        }
+                    });
+                    renderProducts(productsData);
                 } else {
                     showToast('Ошибка: ' + data.error, 'danger');
                 }
             })
             .catch(error => {
-                document.getElementById('publishSpinner').style.display = 'none';
+                spinnerDiv.style.display = 'none';
                 document.getElementById('publishBtn').disabled = false;
                 showToast('Ошибка: ' + error, 'danger');
             });
