@@ -312,8 +312,6 @@ def publish():
                     text_to_rewrite = f"Бренд: {brand}\nНазвание: {name}"
                     if product_url:
                         text_to_rewrite += f"\nURL: {product_url}"
-                    if fragrantica_url:
-                        text_to_rewrite += f"\nFragrantica: {fragrantica_url}"
                     
                     response = client.chat.completions.create(
                         model="gpt-4o",
@@ -326,12 +324,10 @@ def publish():
                     
                     rewritten_text = response.choices[0].message.content
                 
-                # Добавляем ссылки
+                # Добавляем ссылку
                 footer = ""
                 if product_url:
                     footer += f"\n\n🔗 Randewoo: {product_url}"
-                if fragrantica_url:
-                    footer += f"\n🌸 Fragrantica: {fragrantica_url}"
                 
                 full_text = rewritten_text + footer
                 
