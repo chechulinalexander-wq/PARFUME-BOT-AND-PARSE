@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import sqlite3
 from openai import OpenAI
+import httpx
 import requests
 import json
 import os
@@ -299,24 +300,31 @@ def publish():
                 prompt = prompt_template.replace('{brand}', brand).replace('{name}', name)
                 
                 # Генерируем текст через GPT
-                client = OpenAI(api_key=openai_key)
-                
-                text_to_rewrite = f"Бренд: {brand}\nНазвание: {name}"
-                if product_url:
-                    text_to_rewrite += f"\nURL: {product_url}"
-                if fragrantica_url:
-                    text_to_rewrite += f"\nFragrantica: {fragrantica_url}"
-                
-                response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": prompt},
-                        {"role": "user", "content": text_to_rewrite}
-                    ],
-                    temperature=0.7
-                )
-                
-                rewritten_text = response.choices[0].message.content
+                # Создаем HTTP клиент без проксирования
+                with httpx.Client() as http_client:
+                    client = OpenAI(
+                        api_key=openai_key,
+                        http_client=http_client,
+                        max_retries=2,
+                        timeout=60.0
+                    )
+                    
+                    text_to_rewrite = f"Бренд: {brand}\nНазвание: {name}"
+                    if product_url:
+                        text_to_rewrite += f"\nURL: {product_url}"
+                    if fragrantica_url:
+                        text_to_rewrite += f"\nFragrantica: {fragrantica_url}"
+                    
+                    response = client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": text_to_rewrite}
+                        ],
+                        temperature=0.7
+                    )
+                    
+                    rewritten_text = response.choices[0].message.content
                 
                 # Добавляем ссылки
                 footer = ""
