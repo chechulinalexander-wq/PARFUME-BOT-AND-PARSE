@@ -330,8 +330,6 @@ def publish():
                 footer = ""
                 if product_url:
                     footer += f"\n\n🔗 Randewoo: {product_url}"
-                if fragrantica_url:
-                    footer += f"\n🌸 Fragrantica: {fragrantica_url}"
                 
                 full_text = rewritten_text + footer
                 
